@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 from subprocess import PIPE, run
 from PIL import Image
+from datetime import datetime
 import os
 
 app = Flask(__name__)
@@ -36,12 +37,26 @@ def serve_static(filename):
 @app.route('/clean_images', methods=['GET'])
 def clean_images():
     try:
+        cutoff_date_str = request.args.get('cutoff_date')
+        if not cutoff_date_str:
+            return jsonify({'error': 'cutoff_date query parameter is required'}), 400
+        try:
+            cutoff_date = datetime.strptime(cutoff_date_str, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
         images_directory = os.path.join(app.root_path, 'images')
+        deleted_files = []
         for filename in os.listdir(images_directory):
             file_path = os.path.join(images_directory, filename)
             if os.path.isfile(file_path):
-                os.remove(file_path)
-        return jsonify({'message': 'All images cleaned successfully'}), 200
+                mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+                if mod_time < cutoff_date:
+                    os.remove(file_path)
+                    deleted_files.append(filename)
+        return jsonify({
+            'message': 'Images cleaned successfully',
+            'deleted_files': deleted_files
+        }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
